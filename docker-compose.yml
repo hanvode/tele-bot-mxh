@@ -1,0 +1,11 @@
+services:
+  bot-mxh:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bot-mxh
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    volumes:
+      - ./logs:/app/logs
