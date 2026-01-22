@@ -11,7 +11,7 @@ const weiboAcoounts = weiboEnv.split(',').map(s => s.trim()).filter(Boolean).map
 async function scheduleOnce() {
     const apiUrl = process.env.API_URL || '';
     for (let i = 0; i < weiboAcoounts.length; i++) {
-        const delayTime = i * 30 * 1000; // Delay mỗi job thêm 30 giây
+        const delayTime = i * 20 * 1000; // Delay mỗi job thêm 30 giây
         const weibo = weiboAcoounts[i];
         await monitorQueue.add('checkApiWeibo', { apiUrl, idWeibo: weibo.id, weiboName: weibo.name }, {
             attempts: 3,
