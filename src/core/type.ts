@@ -19,7 +19,8 @@ export interface IWeiboPost {
     idstr: string;
     mblogid: string;
     isLongText: boolean;
-    isTop: number;
+    isTop?: number;
+    retweeted_status?: IWeiboPost;
 }
 
 export interface IWeiboAPIResponse {

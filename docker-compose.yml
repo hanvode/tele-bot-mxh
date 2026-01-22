@@ -9,3 +9,24 @@ services:
       - ./.env
     volumes:
       - ./logs:/app/logs
+    depends_on:
+      - redis
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: monitor-weibo-worker
+    env_file:
+      - ./.env
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    command: ["node", "dist/queues/monitorWorker.js"] 
+    depends_on:
+      - redis
+  
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "8379:6379"
