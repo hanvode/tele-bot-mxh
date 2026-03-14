@@ -3,21 +3,26 @@ import sanitizeHtml from 'sanitize-html';
 import { defaultAxios } from '../utils/http';
 import { logger } from '../utils/logger';
 import { IGetWeiboLongTextParams, IGetWeiboParams, IWeiboAPIResponse, IWeiboLongTextResponse, IWeiboPost } from './type';
+import OpenAI from 'openai';
 
 export const blackWords: string[] = process.env.BLACK_WORDS ? process.env.BLACK_WORDS.split(',') : [];
 export const whiteWords: string[] = process.env.WHITE_WORDS ? process.env.WHITE_WORDS.split(',') : [];
 
 export class APIMonitor {
+    private openai: OpenAI;
     constructor(
         private translateProxy = '',
         private checkInterval = 3600,
     ) {
+        this.openai = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY || '',
+        });
     }
 
     // get data weibo post today
     public async getDataWeiboPost(apiUrl: string, id: string): Promise<IWeiboPost[]> {
         const now = Date.now();
-        const thresholdTime = now - (this.checkInterval * 1000);
+        const thresholdTime = now - (36000 * 1000);
         const newPosts: IWeiboPost[] = []
         let isContinuePost = true;
         let start = 1;
@@ -36,7 +41,7 @@ export class APIMonitor {
             if (!weiboPosts) {
                 throw new Error("API trả về dữ liệu rỗng (null/undefined)");
             }
-
+            console.log("DDDDDDDD", weiboPosts.list?.length);
             if (!weiboPosts?.list || weiboPosts?.list?.length === 0) break;
             for (const newData of weiboPosts.list) {
                 const postTime = new Date(newData.created_at).getTime();
@@ -46,7 +51,7 @@ export class APIMonitor {
                     isContinuePost = false;
                     break;
                 }
-
+                console.log("test");
 
                 let longText = newData.text_raw;
                 try {
@@ -173,7 +178,7 @@ export class APIMonitor {
         return text; // fallback an toàn (không chạy tới đây)
     }
 
-    public async translateMultiline(text: string): Promise<string> {
+    public async translateMultiline1(text: string): Promise<string> {
         if (!text) return '';
         const segments = text
             .split('\n')
@@ -208,6 +213,80 @@ export class APIMonitor {
 
         return translatedLines.join('\n');
     }
+
+    /**
+ * Dịch nhiều đoạn văn bản cùng lúc bằng OpenAI GPT-4o mini.
+ * Gộp tất cả đoạn vào 1 request duy nhất để tiết kiệm chi phí.
+ * Mỗi đoạn phân cách bằng "|||" để tách kết quả sau khi dịch.
+ */
+    public async translateMultiline(text: string): Promise<string> {
+        if (!text) return '';
+
+        const SEPARATOR = '|||';
+        const maxRetries = 3;
+        const baseDelay = 500;
+
+        // Tách thành từng dòng, bỏ dòng trắng
+        const segments = text
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line !== '');
+
+        if (segments.length === 0) return '';
+
+        // Gộp tất cả dòng thành 1 prompt duy nhất
+        const combinedText = segments.join(`\n${SEPARATOR}\n`);
+
+        const systemPrompt =
+            `You are a professional Chinese to Vietnamese translator. ` +
+            `Translate the following text. Each segment is separated by "${SEPARATOR}". ` +
+            `Keep the same separator between translated segments. ` +
+            `Preserve hashtags (e.g. #tag#), usernames (@xxx), and emojis as-is. ` +
+            `Output only the translation, nothing else.`;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                const response = await this.openai.chat.completions.create({
+                    model: 'gpt-4o-mini',
+                    temperature: 0.1,   // Độ sáng tạo thấp → dịch nhất quán hơn
+                    max_tokens: 4096,
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: combinedText },
+                    ],
+                });
+
+                const translated = response.choices[0]?.message?.content?.trim() || '';
+                const translatedSegments = translated.split(SEPARATOR).map(s => s.trim());
+
+                // Nếu số đoạn khớp → dùng luôn
+                if (translatedSegments.length === segments.length) {
+                    return translatedSegments.join('\n');
+                }
+
+                // Nếu không khớp số đoạn → log warning nhưng vẫn dùng kết quả
+                logger.warn(
+                    `⚠️ Số đoạn dịch không khớp: expected ${segments.length}, got ${translatedSegments.length}. Dùng kết quả nguyên.`
+                );
+                return translated;
+
+            } catch (err: any) {
+                const errMsg = err?.message || String(err);
+                logger.error(`❌ OpenAI translate error (attempt ${attempt}/${maxRetries}): ${errMsg}`);
+
+                if (attempt < maxRetries) {
+                    const wait = baseDelay * Math.pow(2, attempt - 1);
+                    await new Promise(res => setTimeout(res, wait));
+                } else {
+                    logger.error('⚠️ Hết lượt retry, trả về text gốc.');
+                    return text; // fallback về text gốc
+                }
+            }
+        }
+
+        return text;
+    }
+
 
     public splitMessage(message: string, maxLength = 3000): string[] {
         let parts = [];
@@ -254,8 +333,10 @@ export class APIMonitor {
             let stt = 1;
             for (let i = newData.length - 1; i >= 0; i--) {
                 const post = newData[i];
+                const noiDung = await this.translateMultiline(post.text_raw || '');
+                console.log('Noi dung====>', noiDung);
                 messageString += `${stt}. ⏰ Thời gian: ${post.created_at} (giờ Trung Quốc)\n` +
-                    `📝 Nội dung bài:\n${(await this.translateMultiline(post.text_raw || ''))}\n\n`;
+                    `📝 Nội dung bài:\n${noiDung}\n\n`;
                 stt++;
             }
         }

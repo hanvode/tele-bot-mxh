@@ -13,6 +13,7 @@ export const worker = new Worker('monitorWeiboQueue', async job => {
 
 
     const weiboPosts = await apiMonitor.getDataWeiboPost(apiUrl, idWeibo);
+    console.log(weiboPosts);
     let message = await apiMonitor.handleBuildMessage(weiboPosts, weiboName);
 
     if (message && message.trim()) {

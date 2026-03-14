@@ -13,9 +13,10 @@
     "@vitalets/google-translate-api": "^9.1.0",
     "axios": "^1.6.2",
     "bullmq": "^5.20.2",
-    "node-telegram-bot-api": "^0.64.0",
-    "sanitize-html": "^2.17.0",
     "ioredis": "^5.4.1",
+    "node-telegram-bot-api": "^0.64.0",
+    "openai": "^6.29.0",
+    "sanitize-html": "^2.17.0",
     "winston": "^3.11.0"
   },
   "devDependencies": {
